@@ -5,6 +5,7 @@ import { track } from "@vercel/analytics";
 import type { DimensionResult } from "@/lib/diagnostic-data";
 import type { Answers } from "@/lib/scoring";
 import { encodeAnswers } from "@/lib/share";
+import { getTotalScore, getTotalMax, getMatchingPatterns, getRedCount } from "@/lib/scoring";
 
 interface ShareModalProps {
   open: boolean;
@@ -70,7 +71,7 @@ export default function ShareModal({
     };
   }, [open]);
 
-  const handleSave = useCallback(async () => {
+  const handleSend = useCallback(async () => {
     if (!name.trim() || !email.trim() || !initiativeName.trim()) {
       setErrorMsg("Please fill in all fields.");
       setState("error");
@@ -89,8 +90,40 @@ export default function ShareModal({
       const encoded = encodeAnswers(answers);
       const shareUrl = `${window.location.origin}/diagnostic?r=${encoded}`;
 
+      const res = await fetch("/api/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim(),
+          initiativeName: initiativeName.trim(),
+          shareUrl,
+          totalScore: getTotalScore(results),
+          totalMax: getTotalMax(results),
+          dimensions: results.map((r) => ({
+            name: r.dimension.name,
+            score: r.score,
+            maxScore: r.maxScore,
+            status: r.status,
+          })),
+          patterns: getMatchingPatterns(results).map((p) => ({
+            label: p.label,
+            description: p.description,
+          })),
+          redCount: getRedCount(results),
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Send failed");
+      }
+
+      track("email_shared");
+      setState("success");
+
+      // Update Notion record with contact details (fire-and-forget)
       if (notionPageId) {
-        const res = await fetch("/api/submit/update", {
+        fetch("/api/submit/update", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -100,27 +133,17 @@ export default function ShareModal({
             projectName: initiativeName.trim(),
             shareUrl,
           }),
-        });
-
-        if (!res.ok) {
-          throw new Error("Save failed");
-        }
+        }).catch(() => {});
       }
-
-      track("results_recorded");
-      setState("success");
     } catch {
       setErrorMsg("Something went wrong. Please try again.");
       setState("error");
     }
-  }, [name, email, initiativeName, answers, notionPageId]);
+  }, [name, email, initiativeName, answers, results, notionPageId]);
 
   const isLoading = state === "loading";
   const isSuccess = state === "success";
   const showError = state === "error" && errorMsg;
-
-  // Suppress unused variable warnings for props used only in dependency arrays
-  void results;
 
   return (
     <div
@@ -153,10 +176,10 @@ export default function ShareModal({
                 id="share-modal-title"
                 className="font-[family-name:var(--font-heading)] text-xl font-bold mb-1"
               >
-                Record Your Results
+                Share Your Results
               </h3>
               <p className="font-[family-name:var(--font-body)] text-sm text-[var(--color-grey)] mb-7">
-                Save your diagnostic profile and receive follow-up insights
+                Send your diagnostic profile by email
               </p>
 
               <div className="mb-5">
@@ -203,7 +226,7 @@ export default function ShareModal({
               </div>
 
               <p className="text-[0.7rem] text-[var(--color-grey)] leading-relaxed mb-5">
-                Your details are stored securely to deliver follow-up insights and help us improve the diagnostic.
+                Your name and email are stored securely to deliver your results and help us improve the diagnostic.
               </p>
 
               {showError && (
@@ -213,7 +236,7 @@ export default function ShareModal({
               )}
 
               <button
-                onClick={handleSave}
+                onClick={handleSend}
                 disabled={isLoading}
                 className={`
                   w-full py-3.5 font-[family-name:var(--font-heading)] text-[0.9rem] font-bold
@@ -224,7 +247,7 @@ export default function ShareModal({
                   ${isLoading ? "animate-pulse" : ""}
                 `}
               >
-                {isLoading ? "Saving..." : "Save Results"}
+                {isLoading ? "Sending..." : "Send Results"}
               </button>
 
               <button
@@ -251,11 +274,14 @@ export default function ShareModal({
                 </svg>
               </div>
               <p className="font-[family-name:var(--font-heading)] text-lg font-bold mb-2">
-                Results recorded!
+                Results sent!
               </p>
               <p className="font-[family-name:var(--font-body)] text-sm text-[var(--color-grey)] leading-relaxed mb-6">
-                Your diagnostic profile has been saved. We&apos;ll be in touch with follow-up insights at{" "}
+                Your diagnostic profile has been sent to{" "}
                 <strong className="text-[var(--color-foreground)]">{email}</strong>.
+                <br />
+                You&apos;ll also receive a copy at{" "}
+                <strong className="text-[var(--color-foreground)]">hello@aieutics.com</strong>.
               </p>
               <button
                 onClick={onClose}
