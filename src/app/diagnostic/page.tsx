@@ -221,8 +221,9 @@ function DiagnosticContent() {
           />
           <p className="font-[family-name:var(--font-body)] text-xs text-[var(--color-grey)]">
             Built by{" "}
-            <a href="https://www.aieutics.com" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-orange)] transition-colors">Aieutics</a>.
-            These tools are starting points. If your results raise questions,{" "}
+            <a href="https://www.aieutics.com" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-orange)] transition-colors">Aieutics</a>{" "}
+            from two decades of practice across strategy consulting, executive coaching, and digital transformation.
+            These diagnostics are starting points. If your results raise questions,{" "}
             <a href="https://www.aieutics.com" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--color-orange)] transition-colors">let&apos;s talk</a>.
           </p>
         </div>

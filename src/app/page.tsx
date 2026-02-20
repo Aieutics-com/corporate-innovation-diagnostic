@@ -113,8 +113,8 @@ export default function Home() {
           <p className="font-[family-name:var(--font-body)] text-xs text-white/50">
             Built by{" "}
             <a href="https://www.aieutics.com" target="_blank" rel="noopener noreferrer" className="hover:text-white/70 transition-colors">Aieutics</a>{" "}
-            from patterns observed across executive coaching, corporate accelerator programmes, and consulting engagements with corporate innovation teams.
-            These tools are starting points. If your results raise questions,{" "}
+            from two decades of practice across strategy consulting, executive coaching, and digital transformation.
+            These diagnostics are starting points. If your results raise questions,{" "}
             <a href="https://www.aieutics.com" target="_blank" rel="noopener noreferrer" className="hover:text-white/70 transition-colors">let&apos;s talk</a>.
           </p>
         </div>
