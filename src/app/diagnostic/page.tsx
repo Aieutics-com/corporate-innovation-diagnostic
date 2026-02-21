@@ -20,6 +20,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Suspense } from "react";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import type { Tier } from "@/lib/payment";
 
 function DiagnosticContent() {
   const searchParams = useSearchParams();
@@ -27,12 +28,18 @@ function DiagnosticContent() {
   const [currentStep, setCurrentStep] = useState(0);
   const [showResults, setShowResults] = useState(false);
   const [notionPageId, setNotionPageId] = useState<string | null>(null);
+  const [isPaid, setIsPaid] = useState(false);
+  const [tier, setTier] = useState<Tier | null>(null);
   const hasTrackedStart = useRef(false);
   const isSharedView = useRef(false);
+  const hasCheckedUnlock = useRef(false);
 
-  // Decode shared results from URL
+  // Decode shared results from URL + handle unlock flow + demo check
   useEffect(() => {
     const encoded = searchParams.get("r");
+    const sessionId = searchParams.get("session_id");
+    const demoKey = searchParams.get("demo");
+
     if (encoded) {
       const decoded = decodeAnswers(encoded);
       if (decoded) {
@@ -44,7 +51,39 @@ function DiagnosticContent() {
       track("diagnostic_started");
       hasTrackedStart.current = true;
     }
-  }, [searchParams]);
+
+    // Handle Stripe redirect: verify session and set unlock cookie
+    if (sessionId && !hasCheckedUnlock.current) {
+      hasCheckedUnlock.current = true;
+      fetch(`/api/unlock?session_id=${encodeURIComponent(sessionId)}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success) {
+            setIsPaid(true);
+            setTier(data.tier || "analysis");
+            track("payment_unlocked", { tier: data.tier });
+            // Clean up the URL — remove session_id but keep r
+            const url = new URL(window.location.href);
+            url.searchParams.delete("session_id");
+            window.history.replaceState({}, "", url.toString());
+          }
+        })
+        .catch(() => {});
+    }
+
+    // Handle demo link: verify server-side
+    if (demoKey && !isPaid) {
+      fetch(`/api/check-demo?key=${encodeURIComponent(demoKey)}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.valid) {
+            setIsPaid(true);
+            setTier("debrief");
+          }
+        })
+        .catch(() => {});
+    }
+  }, [searchParams, isPaid]);
 
   const handleAnswer = useCallback((questionId: number, value: boolean) => {
     setAnswers((prev) => ({ ...prev, [questionId]: value }));
@@ -112,7 +151,10 @@ function DiagnosticContent() {
     setCurrentStep(0);
     setShowResults(false);
     setNotionPageId(null);
+    setIsPaid(false);
+    setTier(null);
     isSharedView.current = false;
+    hasCheckedUnlock.current = false;
     window.history.replaceState({}, "", "/diagnostic");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
@@ -204,6 +246,8 @@ function DiagnosticContent() {
               answers={answers}
               onRestart={handleRestart}
               notionPageId={notionPageId}
+              isPaid={isPaid}
+              tier={tier}
             />
           )}
         </div>
