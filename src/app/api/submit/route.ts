@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSubmission } from "@/lib/notion";
+import { notifySubmission } from "@/lib/notify";
 
 interface SubmitRequestBody {
   tool: string;
@@ -40,6 +41,16 @@ export async function POST(request: Request) {
       redCount: body.redCount,
       encodedAnswers: body.encodedAnswers,
     });
+
+    // Notify hello@aieutics.com (fire-and-forget — do not block response)
+    notifySubmission({
+      totalScore: body.totalScore,
+      totalMax: body.totalMax,
+      dimensions: body.dimensions,
+      patterns: body.patterns,
+      redCount: body.redCount,
+      encodedAnswers: body.encodedAnswers,
+    }).catch(() => {});
 
     return NextResponse.json({ success: true, pageId });
   } catch (err) {

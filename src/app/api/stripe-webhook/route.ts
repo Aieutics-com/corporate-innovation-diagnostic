@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
+import { notifyPayment } from "@/lib/notify";
 
 export async function POST(request: Request) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -182,6 +183,42 @@ export async function POST(request: Request) {
                   },
                 }),
               });
+
+              // Extract dimension data from the Notion record for the notification email
+              const props = page.properties || {};
+              const dimensions = [];
+              for (let i = 1; i <= 5; i++) {
+                const nameProp = props[`D${i} Name`];
+                const scoreProp = props[`D${i} Score`];
+                const statusProp = props[`D${i} Status`];
+                const name = nameProp?.rich_text?.[0]?.plain_text || nameProp?.title?.[0]?.plain_text || `Dimension ${i}`;
+                const score = scoreProp?.number ?? 0;
+                const statusRaw = (statusProp?.select?.name || "amber").toLowerCase();
+                const maxScore = (i === 1 || i === 5) ? 3 : 4;
+                dimensions.push({ name, score, maxScore, status: statusRaw as "green" | "amber" | "red" });
+              }
+
+              const totalScore = props["Total Score"]?.number ?? 0;
+              const totalMax = props["Total Max"]?.number ?? 18;
+              const redCount = props["Red Count"]?.number ?? 0;
+              const patternsRaw = props["Patterns"]?.multi_select || [];
+              const patterns = patternsRaw.map((p: { name: string }) => p.name);
+
+              // Send payment notification email (fire-and-forget)
+              notifyPayment({
+                tier: tier as "analysis" | "debrief",
+                customerEmail,
+                companyName,
+                amountPaid: amountTotal / 100,
+                currency,
+                promoCode,
+                totalScore,
+                totalMax,
+                dimensions,
+                patterns,
+                redCount,
+                encodedAnswers,
+              }).catch(() => {});
             }
           }
         }
