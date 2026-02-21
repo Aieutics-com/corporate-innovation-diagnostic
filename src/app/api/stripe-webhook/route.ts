@@ -180,6 +180,12 @@ export async function POST(request: Request) {
                         : [],
                     },
                     Email: { email: customerEmail || null },
+                    "Stripe Session": {
+                      url: `https://dashboard.stripe.com/payments/${session.payment_intent || session.id}`,
+                    },
+                    "Results URL": {
+                      url: `https://corporatepoc.aieutics.com/diagnostic?r=${encodedAnswers}`,
+                    },
                   },
                 }),
               });

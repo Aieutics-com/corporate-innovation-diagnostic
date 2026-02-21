@@ -83,6 +83,9 @@ export async function createSubmission(data: SubmissionData): Promise<string> {
         multi_select: data.patterns.map((id) => ({ name: id })),
       },
       Shared: { checkbox: false },
+      "Results URL": {
+        url: `https://corporatepoc.aieutics.com/diagnostic?r=${data.encodedAnswers}`,
+      },
       ...questionProps,
       ...dimensionProps,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
