@@ -282,6 +282,3 @@ Each stage of the corporate innovation journey requires a different capability. 
     email: "hello@aieutics.com",
   },
 };
-
-export const ATTRIBUTION =
-  "Developed by Aieutics from patterns observed across executive coaching, corporate accelerator programmes, and consulting engagements with corporate innovation teams.";

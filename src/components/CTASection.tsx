@@ -1,4 +1,4 @@
-import { CTA_COPY, ATTRIBUTION } from "@/lib/diagnostic-data";
+import { CTA_COPY } from "@/lib/diagnostic-data";
 
 interface CTASectionProps {
   redCount: number;
@@ -55,11 +55,6 @@ export default function CTASection({ redCount }: CTASectionProps) {
           </a>
         </div>
       </div>
-
-      {/* Attribution */}
-      <p className="font-[family-name:var(--font-body)] text-xs text-[var(--color-grey)] mt-8 italic">
-        {ATTRIBUTION}
-      </p>
     </section>
   );
 }
