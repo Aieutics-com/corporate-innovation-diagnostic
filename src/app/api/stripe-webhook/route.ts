@@ -37,7 +37,12 @@ export async function POST(request: Request) {
     .update(signedPayload)
     .digest("hex");
 
-  const isValid = elements.signatures.some((sig) => sig === expectedSignature);
+  const expectedBuf = Buffer.from(expectedSignature);
+  const isValid = elements.signatures.some(
+    (sig) =>
+      sig.length === expectedSignature.length &&
+      crypto.timingSafeEqual(Buffer.from(sig), expectedBuf)
+  );
 
   if (!isValid) {
     console.error("Stripe webhook signature verification failed");
@@ -139,8 +144,16 @@ export async function POST(request: Request) {
               },
               body: JSON.stringify({
                 filter: {
-                  property: "Encoded Answers",
-                  rich_text: { equals: encodedAnswers },
+                  and: [
+                    {
+                      property: "Encoded Answers",
+                      rich_text: { equals: encodedAnswers },
+                    },
+                    {
+                      property: "Tool",
+                      select: { equals: "Corporate Innovation Diagnostic" },
+                    },
+                  ],
                 },
                 sorts: [{ property: "Submitted At", direction: "descending" }],
                 page_size: 1,

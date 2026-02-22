@@ -55,6 +55,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, pageId });
   } catch (err) {
     console.error("Submit API error:", err);
-    return NextResponse.json({ success: true, pageId: null });
+    return NextResponse.json(
+      { success: false, error: "Submission failed" },
+      { status: 500 }
+    );
   }
 }

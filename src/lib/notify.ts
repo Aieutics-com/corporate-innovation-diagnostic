@@ -2,6 +2,16 @@ import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+/** Escape user-supplied strings before interpolating into HTML email templates. */
+export function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 const statusLabel: Record<string, string> = {
   green: "Strong",
   amber: "Partial",
@@ -194,13 +204,18 @@ export async function notifyPayment(params: NotifyPaymentParams) {
   const tierLabel = tier === "debrief" ? "Full Analysis + Debrief" : "Full Analysis";
   const isDebrief = tier === "debrief";
 
+  // Escape user-supplied fields before HTML interpolation
+  const safeEmail = escapeHtml(customerEmail);
+  const safeCompany = escapeHtml(companyName);
+  const safePromo = escapeHtml(promoCode);
+
   const patternText =
     patterns.length > 0
       ? `<p style="font-size: 13px; color: #6b6b6b; margin: 4px 0;">Patterns: <strong>${patterns.join(", ")}</strong></p>`
       : "";
 
-  const promoText = promoCode
-    ? `<p style="font-size: 13px; color: #6b6b6b; margin: 4px 0;">Promo code: <strong>${promoCode}</strong></p>`
+  const promoText = safePromo
+    ? `<p style="font-size: 13px; color: #6b6b6b; margin: 4px 0;">Promo code: <strong>${safePromo}</strong></p>`
     : "";
 
   const debriefBlock = isDebrief
@@ -210,7 +225,7 @@ export async function notifyPayment(params: NotifyPaymentParams) {
         Debrief Session Requested
       </p>
       <p style="font-size: 14px; color: #1a1a1a; margin: 0; line-height: 1.6;">
-        This buyer purchased the debrief tier. Please reply to <strong>${customerEmail}</strong> with your available times for a 20-minute video call.
+        This buyer purchased the debrief tier. Please reply to <strong>${safeEmail}</strong> with your available times for a 20-minute video call.
       </p>
     </div>`
     : "";
@@ -239,14 +254,14 @@ export async function notifyPayment(params: NotifyPaymentParams) {
       <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
         <tr>
           <td style="padding: 6px 0; color: #6b6b6b; width: 120px;">Email</td>
-          <td style="padding: 6px 0; font-weight: 700;"><a href="mailto:${customerEmail}" style="color: #FF5F1F; text-decoration: none;">${customerEmail}</a></td>
+          <td style="padding: 6px 0; font-weight: 700;"><a href="mailto:${safeEmail}" style="color: #FF5F1F; text-decoration: none;">${safeEmail}</a></td>
         </tr>
-        ${companyName ? `<tr><td style="padding: 6px 0; color: #6b6b6b;">Company</td><td style="padding: 6px 0; font-weight: 700;">${companyName}</td></tr>` : ""}
+        ${safeCompany ? `<tr><td style="padding: 6px 0; color: #6b6b6b;">Company</td><td style="padding: 6px 0; font-weight: 700;">${safeCompany}</td></tr>` : ""}
         <tr>
           <td style="padding: 6px 0; color: #6b6b6b;">Amount</td>
           <td style="padding: 6px 0; font-weight: 700;">${amountPaid > 0 ? `${currency} ${amountPaid.toFixed(2)}` : "Free (promo code)"}</td>
         </tr>
-        ${promoText ? `<tr><td style="padding: 6px 0; color: #6b6b6b;">Promo</td><td style="padding: 6px 0; font-weight: 700;">${promoCode}</td></tr>` : ""}
+        ${promoText ? `<tr><td style="padding: 6px 0; color: #6b6b6b;">Promo</td><td style="padding: 6px 0; font-weight: 700;">${safePromo}</td></tr>` : ""}
       </table>
     </div>
 

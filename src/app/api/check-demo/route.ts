@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -16,7 +17,7 @@ export async function GET(request: Request) {
   // Constant-time comparison to prevent timing attacks
   const valid =
     key.length === demoSecret.length &&
-    key.split("").every((char, i) => char === demoSecret[i]);
+    crypto.timingSafeEqual(Buffer.from(key), Buffer.from(demoSecret));
 
   return NextResponse.json({ valid });
 }

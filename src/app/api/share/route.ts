@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
+import { escapeHtml } from "@/lib/notify";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -46,18 +47,19 @@ export async function POST(request: Request) {
     const statusLabel = { green: "Strong", amber: "Partial", red: "At Risk" };
     const statusColor = { green: "#5a9a6e", amber: "#d4943a", red: "#ef4444" };
 
-    // Extract first name for greeting
-    const firstName = body.name.trim().split(/\s+/)[0];
+    // Escape user-supplied fields before HTML interpolation
+    const safeFirstName = escapeHtml(body.name.trim().split(/\s+/)[0]);
+    const safeInitiativeName = escapeHtml(body.initiativeName);
 
-    // Extract base URL for hosted assets (logo)
-    const baseUrl = new URL(body.shareUrl).origin;
+    // Hardcoded base URL — do not derive from user-supplied shareUrl
+    const baseUrl = "https://corporatepoc.aieutics.com";
 
     const dimensionRows = body.dimensions
       .map(
         (d) => `
         <tr>
           <td style="padding: 8px 12px; border-bottom: 1px solid #e5e5e5; font-family: Georgia, 'Times New Roman', serif; font-size: 14px;">
-            ${d.name}
+            ${escapeHtml(d.name)}
           </td>
           <td style="padding: 8px 12px; border-bottom: 1px solid #e5e5e5; text-align: center; font-family: 'Courier New', monospace; font-size: 13px; color: #6b6b6b;">
             ${d.score}/${d.maxScore}
@@ -83,10 +85,10 @@ export async function POST(request: Request) {
       </p>
       <div style="border-left: 3px solid #FF5F1F; padding-left: 16px;">
         <p style="font-family: Georgia, 'Times New Roman', serif; font-size: 14px; font-weight: 700; color: #FF5F1F; margin: 0 0 6px 0;">
-          ${p.label}
+          ${escapeHtml(p.label)}
         </p>
         <p style="font-size: 14px; color: #1a1a1a; margin: 0; line-height: 1.6;">
-          ${p.description}
+          ${escapeHtml(p.description)}
         </p>
       </div>
     </div>`
@@ -121,14 +123,14 @@ export async function POST(request: Request) {
         Corporate Innovation Diagnostic
       </p>
       <p style="font-family: Georgia, 'Times New Roman', serif; font-size: 11px; color: #6b6b6b; margin: 0;">
-        Results for ${body.initiativeName}
+        Results for ${safeInitiativeName}
       </p>
     </div>
 
     <!-- Greeting -->
     <div style="margin-bottom: 24px;">
       <p style="font-family: Georgia, 'Times New Roman', serif; font-size: 18px; font-weight: 700; color: #1a1a1a; margin: 0 0 12px 0;">
-        Hello ${firstName},
+        Hello ${safeFirstName},
       </p>
       <p style="font-size: 14px; color: #6b6b6b; margin: 0; line-height: 1.6;">
         Thank you for taking the Corporate Innovation Diagnostic!
@@ -200,6 +202,8 @@ export async function POST(request: Request) {
         ? `\nYour Profile Pattern:\n${body.patterns.map((p) => `${p.label} — ${p.description}`).join("\n")}\n`
         : "";
 
+    // Plain text version uses unescaped originals (no HTML context)
+    const firstName = body.name.trim().split(/\s+/)[0];
     const text = `Corporate Innovation Diagnostic — Results for ${body.initiativeName}
 
 Hello ${firstName},

@@ -24,6 +24,9 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("Update submission error:", err);
-    return NextResponse.json({ success: true });
+    return NextResponse.json(
+      { success: false, error: "Update failed" },
+      { status: 500 }
+    );
   }
 }
