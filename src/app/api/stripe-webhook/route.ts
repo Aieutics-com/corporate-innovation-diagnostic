@@ -59,14 +59,34 @@ export async function POST(request: Request) {
   const event = JSON.parse(body);
 
   if (event.type === "checkout.session.completed") {
-    const session = event.data.object;
+    const webhookSession = event.data.object;
+
+    // The webhook payload is a thin representation — custom_fields, discount
+    // breakdowns, and line items are NOT included. Fetch the full session from
+    // the Stripe API with the expansions we need.
+    let session = webhookSession;
+    try {
+      const params = new URLSearchParams({
+        "expand[]": "total_details.breakdown.discounts.discount.promotion_code",
+      });
+      const fullSessionRes = await fetch(
+        `https://api.stripe.com/v1/checkout/sessions/${webhookSession.id}?${params}`,
+        { headers: { Authorization: `Bearer ${stripeSecret}` } }
+      );
+      if (fullSessionRes.ok) {
+        session = await fullSessionRes.json();
+      }
+    } catch {
+      // Fall back to webhook payload if fetch fails
+      console.error("Failed to fetch expanded Stripe session, using webhook payload");
+    }
 
     // Extract data for Notion update
     const customerEmail = session.customer_details?.email || "";
     const amountTotal = session.amount_total || 0; // in cents
     const currency = (session.currency || "eur").toUpperCase();
 
-    // Get company name from custom fields
+    // Get company name from custom fields (only available in expanded session)
     let companyName = "";
     const customFields = session.custom_fields || [];
     for (const field of customFields) {
@@ -76,23 +96,29 @@ export async function POST(request: Request) {
     }
 
     // Get promo code if used
+    // With the expanded session, promotion_code is an object (not just an ID)
     let promoCode = "";
     if (session.total_details?.breakdown?.discounts?.length > 0) {
       const discount = session.total_details.breakdown.discounts[0];
-      // Fetch the promotion code details
-      const promoId = discount.discount?.promotion_code;
-      if (promoId && typeof promoId === "string") {
-        try {
-          const promoRes = await fetch(
-            `https://api.stripe.com/v1/promotion_codes/${promoId}`,
-            { headers: { Authorization: `Bearer ${stripeSecret}` } }
-          );
-          if (promoRes.ok) {
-            const promoData = await promoRes.json();
-            promoCode = promoData.code || "";
+      const promoObj = discount.discount?.promotion_code;
+      if (promoObj) {
+        if (typeof promoObj === "object" && promoObj.code) {
+          // Expanded: promotion_code is the full object with .code
+          promoCode = promoObj.code;
+        } else if (typeof promoObj === "string") {
+          // Not expanded: promotion_code is just an ID — fetch it
+          try {
+            const promoRes = await fetch(
+              `https://api.stripe.com/v1/promotion_codes/${promoObj}`,
+              { headers: { Authorization: `Bearer ${stripeSecret}` } }
+            );
+            if (promoRes.ok) {
+              const promoData = await promoRes.json();
+              promoCode = promoData.code || "";
+            }
+          } catch {
+            // non-critical, proceed without promo code
           }
-        } catch {
-          // non-critical, proceed without promo code
         }
       }
     }
@@ -100,21 +126,27 @@ export async function POST(request: Request) {
     // Determine tier from line items
     let tier = "analysis";
     const lineItemsRes = await fetch(
-      `https://api.stripe.com/v1/checkout/sessions/${session.id}/line_items`,
+      `https://api.stripe.com/v1/checkout/sessions/${session.id}/line_items?expand[]=data.price.product`,
       { headers: { Authorization: `Bearer ${stripeSecret}` } }
     );
     if (lineItemsRes.ok) {
       const lineItems = await lineItemsRes.json();
       for (const item of lineItems.data || []) {
-        const productId = item.price?.product;
-        if (productId && typeof productId === "string") {
+        // With expand, price.product is the full object
+        const product = typeof item.price?.product === "object"
+          ? item.price.product
+          : null;
+        if (product?.metadata?.tier === "debrief") {
+          tier = "debrief";
+        } else if (typeof item.price?.product === "string") {
+          // Fallback: fetch product individually
           const productRes = await fetch(
-            `https://api.stripe.com/v1/products/${productId}`,
+            `https://api.stripe.com/v1/products/${item.price.product}`,
             { headers: { Authorization: `Bearer ${stripeSecret}` } }
           );
           if (productRes.ok) {
-            const product = await productRes.json();
-            if (product.metadata?.tier === "debrief") {
+            const productData = await productRes.json();
+            if (productData.metadata?.tier === "debrief") {
               tier = "debrief";
             }
           }
