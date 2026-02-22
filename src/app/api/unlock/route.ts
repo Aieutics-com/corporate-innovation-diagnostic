@@ -109,6 +109,10 @@ export async function GET(request: Request) {
             }
           }
         }
+        // Fallback: if no metadata, detect by price (debrief >= 10000 cents / EUR 100)
+        if (tier === "analysis" && (item.amount_total ?? 0) >= 10000) {
+          tier = "debrief";
+        }
       }
     }
 
