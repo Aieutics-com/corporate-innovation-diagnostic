@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import { notifyPayment } from "@/lib/notify";
+import { notifyPayment, sendCustomerReport } from "@/lib/notify";
+import { generateDiagnosticPDF } from "@/lib/generate-pdf";
 
 export async function POST(request: Request) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -223,7 +224,7 @@ export async function POST(request: Request) {
               const patternsRaw = props["Patterns"]?.multi_select || [];
               const patterns = patternsRaw.map((p: { name: string }) => p.name);
 
-              // Send payment notification email (fire-and-forget)
+              // Send payment notification email to Alexandra (fire-and-forget)
               notifyPayment({
                 tier: tier as "analysis" | "debrief",
                 customerEmail,
@@ -238,6 +239,30 @@ export async function POST(request: Request) {
                 redCount,
                 encodedAnswers,
               }).catch(() => {});
+
+              // Generate branded PDF and send to customer (fire-and-forget)
+              if (customerEmail) {
+                try {
+                  const pdfBuffer = generateDiagnosticPDF(
+                    encodedAnswers,
+                    companyName,
+                    customerEmail,
+                    tier as "analysis" | "debrief"
+                  );
+                  sendCustomerReport({
+                    customerEmail,
+                    companyName,
+                    tier: tier as "analysis" | "debrief",
+                    totalScore,
+                    totalMax,
+                    dimensions,
+                    encodedAnswers,
+                    pdfBuffer,
+                  }).catch(() => {});
+                } catch (pdfErr) {
+                  console.error("Failed to generate PDF:", pdfErr);
+                }
+              }
             }
           }
         }

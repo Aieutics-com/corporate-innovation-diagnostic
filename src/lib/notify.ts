@@ -325,3 +325,176 @@ View results: ${resultsUrl}`;
     console.error("Failed to send payment notification:", err);
   }
 }
+
+interface SendCustomerReportParams {
+  customerEmail: string;
+  companyName: string;
+  tier: "analysis" | "debrief";
+  totalScore: number;
+  totalMax: number;
+  dimensions: DimensionSummary[];
+  encodedAnswers: string;
+  pdfBuffer: Buffer;
+}
+
+/**
+ * Send the branded PDF report to the customer after a successful Stripe payment.
+ */
+export async function sendCustomerReport(params: SendCustomerReportParams) {
+  const {
+    customerEmail,
+    companyName,
+    tier,
+    totalScore,
+    totalMax,
+    dimensions,
+    encodedAnswers,
+    pdfBuffer,
+  } = params;
+
+  const isDebrief = tier === "debrief";
+  const resultsUrl = `${resultsBaseUrl}?r=${encodedAnswers}`;
+  const safeCompany = escapeHtml(companyName);
+
+  const dimensionRows = dimensions
+    .map(
+      (d) => `
+    <tr>
+      <td style="padding: 8px 12px; border-bottom: 1px solid #e5e5e5; font-family: Georgia, 'Times New Roman', serif; font-size: 14px;">
+        ${d.name}
+      </td>
+      <td style="padding: 8px 12px; border-bottom: 1px solid #e5e5e5; text-align: center; font-family: 'Courier New', monospace; font-size: 13px; color: #6b6b6b;">
+        ${d.score}/${d.maxScore}
+      </td>
+      <td style="padding: 8px 12px; border-bottom: 1px solid #e5e5e5; text-align: center;">
+        <span style="display: inline-block; padding: 2px 10px; border-radius: 6px; font-size: 12px; font-weight: 700; color: ${statusColor[d.status]}; background: ${statusColor[d.status]}1f;">
+          ${statusLabel[d.status]}
+        </span>
+      </td>
+    </tr>`
+    )
+    .join("");
+
+  const debriefNote = isDebrief
+    ? `
+    <div style="background: #FFF3EC; border: 1px solid #FF5F1F; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+      <p style="font-size: 14px; color: #1a1a1a; margin: 0; line-height: 1.6;">
+        Your purchase includes a <strong>20-minute debrief session</strong>. Alexandra will be in touch shortly to schedule your call.
+      </p>
+    </div>`
+    : "";
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="margin: 0; padding: 0; background: #fafafa; font-family: Arial, Helvetica, sans-serif;">
+  <div style="max-width: 560px; margin: 0 auto; padding: 40px 24px;">
+
+    <!-- Header -->
+    <div style="margin-bottom: 32px;">
+      <p style="font-family: Georgia, 'Times New Roman', serif; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; color: #FF5F1F; margin: 0 0 4px 0;">
+        Corporate Innovation Diagnostic
+      </p>
+      <p style="font-family: Georgia, 'Times New Roman', serif; font-size: 11px; color: #6b6b6b; margin: 0;">
+        Your Full Analysis Report${safeCompany ? ` — ${safeCompany}` : ""}
+      </p>
+    </div>
+
+    <!-- Thank you -->
+    <div style="margin-bottom: 24px;">
+      <p style="font-size: 14px; color: #1a1a1a; line-height: 1.6; margin: 0 0 12px 0;">
+        Thank you for purchasing the Corporate Innovation Diagnostic${isDebrief ? " with Expert Debrief" : ""}. Your full analysis report is attached as a PDF.
+      </p>
+    </div>
+
+    ${debriefNote}
+
+    <!-- Score summary -->
+    <div style="margin-bottom: 24px;">
+      <span style="font-family: Georgia, 'Times New Roman', serif; font-size: 48px; font-weight: 700; color: #FF5F1F; line-height: 1;">
+        ${totalScore}
+      </span>
+      <span style="font-family: Georgia, 'Times New Roman', serif; font-size: 20px; color: #d0d0d0;">
+        /${totalMax}
+      </span>
+    </div>
+
+    <!-- Dimension table -->
+    <div style="margin-bottom: 24px;">
+      <table style="width: 100%; border-collapse: collapse; background: #ffffff; border: 1px solid #e5e5e5; border-radius: 8px;">
+        <thead>
+          <tr style="background: #f5f5f5;">
+            <th style="padding: 10px 12px; text-align: left; font-family: Georgia, 'Times New Roman', serif; font-size: 12px; font-weight: 700; color: #1a1a1a; border-bottom: 1px solid #e5e5e5;">Dimension</th>
+            <th style="padding: 10px 12px; text-align: center; font-family: Georgia, 'Times New Roman', serif; font-size: 12px; font-weight: 700; color: #1a1a1a; border-bottom: 1px solid #e5e5e5;">Score</th>
+            <th style="padding: 10px 12px; text-align: center; font-family: Georgia, 'Times New Roman', serif; font-size: 12px; font-weight: 700; color: #1a1a1a; border-bottom: 1px solid #e5e5e5;">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${dimensionRows}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- View results online -->
+    <div style="text-align: center; margin-bottom: 32px;">
+      <a href="${resultsUrl}" style="display: inline-block; padding: 14px 32px; background: #FF5F1F; color: #ffffff; font-family: Georgia, 'Times New Roman', serif; font-size: 14px; font-weight: 700; text-decoration: none; border-radius: 12px;">
+        View Results Online
+      </a>
+    </div>
+
+    <p style="font-size: 13px; color: #6b6b6b; line-height: 1.6; margin: 0 0 24px 0;">
+      Your full report is attached to this email as a PDF. You can also view your interactive results anytime using the link above.
+    </p>
+
+    <!-- Footer -->
+    <div style="border-top: 1px solid #e5e5e5; padding-top: 24px; text-align: center;">
+      <p style="font-family: Georgia, 'Times New Roman', serif; font-size: 12px; color: #6b6b6b; margin: 0 0 4px 0;">
+        See further. Think deeper. Break through.
+      </p>
+      <a href="https://aieutics.com" style="font-size: 12px; color: #FF5F1F; text-decoration: none;">aieutics.com</a>
+    </div>
+
+  </div>
+</body>
+</html>`;
+
+  const text = `Corporate Innovation Diagnostic — Your Full Analysis Report${companyName ? ` (${companyName})` : ""}
+
+Thank you for purchasing the Corporate Innovation Diagnostic${isDebrief ? " with Expert Debrief" : ""}. Your full analysis report is attached as a PDF.
+${isDebrief ? "\nYour purchase includes a 20-minute debrief session. Alexandra will be in touch shortly to schedule your call.\n" : ""}
+Score: ${totalScore}/${totalMax}
+
+${dimensions.map((d) => `${d.name}: ${d.score}/${d.maxScore} (${statusLabel[d.status]})`).join("\n")}
+
+View your results online: ${resultsUrl}
+
+—
+Aieutics — See further. Think deeper. Break through.
+https://aieutics.com`;
+
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const filename = companyName
+    ? `Corporate-Innovation-Diagnostic-${companyName.replace(/[^a-zA-Z0-9]/g, "-")}-${dateStr}.pdf`
+    : `Corporate-Innovation-Diagnostic-${dateStr}.pdf`;
+
+  try {
+    await resend.emails.send({
+      from: "Corporate Innovation Diagnostic <hello@aieutics.com>",
+      to: [customerEmail],
+      bcc: ["hello@aieutics.com"],
+      replyTo: "hello@aieutics.com",
+      subject: `Your Corporate Innovation Diagnostic Report${companyName ? ` — ${companyName}` : ""}`,
+      html,
+      text,
+      attachments: [
+        {
+          filename,
+          content: pdfBuffer,
+        },
+      ],
+    });
+  } catch (err) {
+    console.error("Failed to send customer report email:", err);
+  }
+}
