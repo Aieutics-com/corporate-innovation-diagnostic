@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSubmission } from "@/lib/notion";
+import { createSubmission, findExistingSubmission } from "@/lib/notion";
 import { notifySubmission } from "@/lib/notify";
 
 interface SubmitRequestBody {
@@ -28,6 +28,17 @@ export async function POST(request: Request) {
         { error: "Missing required fields" },
         { status: 400 }
       );
+    }
+
+    // Deduplicate: if a submission with the same answers already exists, return it
+    if (body.encodedAnswers && body.tool) {
+      const existingPageId = await findExistingSubmission(
+        body.encodedAnswers,
+        body.tool
+      );
+      if (existingPageId) {
+        return NextResponse.json({ success: true, pageId: existingPageId, deduplicated: true });
+      }
     }
 
     const pageId = await createSubmission({

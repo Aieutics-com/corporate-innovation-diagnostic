@@ -38,6 +38,40 @@ const STATUS_MAP: Record<string, string> = {
   red: "Red",
 };
 
+/**
+ * Check if a submission with the same encoded answers and tool already exists.
+ * Returns the existing page ID if found, null otherwise.
+ * Uses raw fetch because @notionhq/client v5 removed databases.query().
+ */
+export async function findExistingSubmission(
+  encodedAnswers: string,
+  tool: string
+): Promise<string | null> {
+  const res = await fetch(
+    `https://api.notion.com/v1/databases/${DATABASE_ID}/query`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.NOTION_API_KEY}`,
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28",
+      },
+      body: JSON.stringify({
+        filter: {
+          and: [
+            { property: "Encoded Answers", rich_text: { equals: encodedAnswers } },
+            { property: "Tool", select: { equals: tool } },
+          ],
+        },
+        page_size: 1,
+      }),
+    }
+  );
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.results?.[0]?.id ?? null;
+}
+
 export async function createSubmission(data: SubmissionData): Promise<string> {
   // Build Q1–Q20 checkbox properties
   const questionProps: Record<string, { checkbox: boolean }> = {};
