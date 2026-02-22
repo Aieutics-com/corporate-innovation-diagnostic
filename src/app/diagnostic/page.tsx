@@ -33,6 +33,7 @@ function DiagnosticContent() {
   const hasTrackedStart = useRef(false);
   const isSharedView = useRef(false);
   const hasCheckedUnlock = useRef(false);
+  const hasCheckedCookie = useRef(false);
   const hasSubmitted = useRef(false);
 
   // Decode shared results from URL + handle unlock flow + demo check
@@ -80,6 +81,20 @@ function DiagnosticContent() {
           if (data.valid) {
             setIsPaid(true);
             setTier("debrief");
+          }
+        })
+        .catch(() => {});
+    }
+
+    // Check unlock cookie for returning visitors (no session_id, no demo)
+    if (encoded && !sessionId && !demoKey && !isPaid && !hasCheckedCookie.current) {
+      hasCheckedCookie.current = true;
+      fetch(`/api/check-unlock?r=${encodeURIComponent(encoded)}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.isPaid) {
+            setIsPaid(true);
+            setTier(data.tier || "analysis");
           }
         })
         .catch(() => {});
@@ -158,6 +173,7 @@ function DiagnosticContent() {
     setTier(null);
     isSharedView.current = false;
     hasCheckedUnlock.current = false;
+    hasCheckedCookie.current = false;
     hasSubmitted.current = false;
     window.history.replaceState({}, "", "/diagnostic");
     window.scrollTo({ top: 0, behavior: "smooth" });
