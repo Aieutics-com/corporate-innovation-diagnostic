@@ -33,6 +33,7 @@ function DiagnosticContent() {
   const hasTrackedStart = useRef(false);
   const isSharedView = useRef(false);
   const hasCheckedUnlock = useRef(false);
+  const hasSubmitted = useRef(false);
 
   // Decode shared results from URL + handle unlock flow + demo check
   useEffect(() => {
@@ -107,7 +108,9 @@ function DiagnosticContent() {
       setShowResults(true);
       window.scrollTo({ top: 0, behavior: "smooth" });
 
-      // Submit to Notion (fire-and-forget)
+      // Submit to Notion (fire-and-forget, deduplicated)
+      if (hasSubmitted.current) return;
+      hasSubmitted.current = true;
       const resultsData = scoreAll(answers);
       const encoded = encodeAnswers(answers);
       const allQuestionIds = DIMENSIONS.flatMap((d) => d.questions.map((q) => q.id));
@@ -155,6 +158,7 @@ function DiagnosticContent() {
     setTier(null);
     isSharedView.current = false;
     hasCheckedUnlock.current = false;
+    hasSubmitted.current = false;
     window.history.replaceState({}, "", "/diagnostic");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);

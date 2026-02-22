@@ -151,7 +151,7 @@ export async function POST(request: Request) {
                     },
                     {
                       property: "Tool",
-                      select: { equals: "Corporate Innovation Diagnostic" },
+                      select: { equals: "Corporate Innovation" },
                     },
                   ],
                 },
