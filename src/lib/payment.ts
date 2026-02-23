@@ -23,7 +23,7 @@ export async function createUnlockToken(
   return new SignJWT({ answers, tier } satisfies UnlockPayload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime("30d")
+    .setExpirationTime("7d")
     .sign(getSecret());
 }
 
