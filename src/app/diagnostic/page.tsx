@@ -64,9 +64,24 @@ function DiagnosticContent() {
             setIsPaid(true);
             setTier(data.tier || "analysis");
             track("payment_unlocked", { tier: data.tier });
-            // Clean up the URL — remove session_id but keep r
+
+            // If we don't already have answers loaded (no `r` param in URL),
+            // use the encoded answers returned from the unlock endpoint to
+            // reconstruct the results view.
+            if (!searchParams.get("r") && data.answers) {
+              const decoded = decodeAnswers(data.answers);
+              if (decoded) {
+                setAnswers(decoded);
+                setShowResults(true);
+              }
+            }
+
+            // Clean up the URL — replace with r param for clean bookmarking
             const url = new URL(window.location.href);
             url.searchParams.delete("session_id");
+            if (data.answers) {
+              url.searchParams.set("r", data.answers);
+            }
             window.history.replaceState({}, "", url.toString());
           }
         })

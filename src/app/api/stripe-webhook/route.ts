@@ -3,6 +3,20 @@ import crypto from "crypto";
 import { notifyPayment, sendCustomerReport } from "@/lib/notify";
 import { generateDiagnosticPDF } from "@/lib/generate-pdf";
 
+// Diagnostic GET handler — confirms the endpoint is live and env vars are present
+export async function GET() {
+  return NextResponse.json({
+    status: "ok",
+    hasWebhookSecret: !!process.env.STRIPE_WEBHOOK_SECRET,
+    hasStripeKey: !!process.env.STRIPE_SECRET_KEY,
+    hasNotionKey: !!process.env.NOTION_API_KEY,
+    hasNotionDb: !!process.env.NOTION_DATABASE_ID,
+    hasResendKey: !!process.env.RESEND_API_KEY,
+    webhookSecretPrefix: process.env.STRIPE_WEBHOOK_SECRET?.slice(0, 8) || "MISSING",
+    timestamp: new Date().toISOString(),
+  });
+}
+
 export async function POST(request: Request) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   const stripeSecret = process.env.STRIPE_SECRET_KEY;
@@ -61,24 +75,26 @@ export async function POST(request: Request) {
   if (event.type === "checkout.session.completed") {
     const webhookSession = event.data.object;
 
-    // The webhook payload is a thin representation — custom_fields, discount
-    // breakdowns, and line items are NOT included. Fetch the full session from
-    // the Stripe API with the expansions we need.
+    // The webhook payload is a thin representation — custom_fields and discount
+    // breakdowns are NOT included. Fetch the full session from the Stripe API.
+    // IMPORTANT: Do NOT use deep expand[] chains — Stripe has a max depth of 4.
+    // "total_details.breakdown.discounts.discount.promotion_code" is 5 levels
+    // deep and triggers property_expansion_max_depth errors.
     let session = webhookSession;
     try {
-      const params = new URLSearchParams({
-        "expand[]": "total_details.breakdown.discounts.discount.promotion_code",
-      });
       const fullSessionRes = await fetch(
-        `https://api.stripe.com/v1/checkout/sessions/${webhookSession.id}?${params}`,
+        `https://api.stripe.com/v1/checkout/sessions/${webhookSession.id}`,
         { headers: { Authorization: `Bearer ${stripeSecret}` } }
       );
       if (fullSessionRes.ok) {
         session = await fullSessionRes.json();
+        console.log("Webhook: Fetched full session", session.id);
+      } else {
+        const errText = await fullSessionRes.text().catch(() => "");
+        console.error("Webhook: Failed to fetch full session:", fullSessionRes.status, errText);
       }
-    } catch {
-      // Fall back to webhook payload if fetch fails
-      console.error("Failed to fetch expanded Stripe session, using webhook payload");
+    } catch (fetchErr) {
+      console.error("Webhook: Exception fetching full session, using webhook payload:", fetchErr);
     }
 
     // Extract data for Notion update
@@ -86,42 +102,79 @@ export async function POST(request: Request) {
     const amountTotal = session.amount_total || 0; // in cents
     const currency = (session.currency || "eur").toUpperCase();
 
-    // Get company name from custom fields (only available in expanded session)
-    let companyName = "";
-    const customFields = session.custom_fields || [];
-    for (const field of customFields) {
-      if (field.key === "companyname" || field.label?.custom === "Company Name") {
-        companyName = field.text?.value || field.dropdown?.value || "";
-      }
-    }
+    // Company name comes from customer_details.name (Stripe's built-in billing
+    // name field), NOT from custom_fields. Payment Links don't use custom_fields
+    // unless explicitly configured — the "Company" field on checkout is the
+    // standard billing company collected via customer_details.
+    const companyName = session.customer_details?.name || "";
+    // individual_name is the person's name (separate from business/company name)
+    const contactName = session.customer_details?.individual_name || "";
 
-    // Get promo code if used
-    // With the expanded session, promotion_code is an object (not just an ID)
+    console.log("Webhook: Extracted fields", JSON.stringify({
+      customerEmail, companyName, contactName, amountTotal, currency,
+      clientRefId: session.client_reference_id || "",
+    }));
+
+    // Get promo code if used.
+    // For Payment Link sessions, discount data lives in session.discounts[] —
+    // an array of objects like { coupon: null, promotion_code: "promo_xxx" }.
+    // The promotion_code value is an ID string that must be fetched separately
+    // to get the human-readable .code (e.g. "FRIENDS2026").
     let promoCode = "";
-    if (session.total_details?.breakdown?.discounts?.length > 0) {
-      const discount = session.total_details.breakdown.discounts[0];
-      const promoObj = discount.discount?.promotion_code;
-      if (promoObj) {
-        if (typeof promoObj === "object" && promoObj.code) {
-          // Expanded: promotion_code is the full object with .code
-          promoCode = promoObj.code;
-        } else if (typeof promoObj === "string") {
-          // Not expanded: promotion_code is just an ID — fetch it
-          try {
+    try {
+      // Primary path: session.discounts[] (Payment Link sessions)
+      const sessionDiscounts = session.discounts || [];
+      for (const disc of sessionDiscounts) {
+        const promoId = disc?.promotion_code || (typeof disc === "string" ? disc : null);
+        if (typeof promoId === "string" && promoId.startsWith("promo_")) {
+          const promoRes = await fetch(
+            `https://api.stripe.com/v1/promotion_codes/${promoId}`,
+            { headers: { Authorization: `Bearer ${stripeSecret}` } }
+          );
+          if (promoRes.ok) {
+            const promoData = await promoRes.json();
+            promoCode = promoData.code || "";
+          }
+          break;
+        }
+        // If disc is an expanded object with .code directly
+        if (typeof disc === "object" && disc?.code) {
+          promoCode = disc.code;
+          break;
+        }
+      }
+
+      // Fallback: total_details.breakdown.discounts (API-created sessions)
+      if (!promoCode) {
+        const breakdownDiscounts = session.total_details?.breakdown?.discounts || [];
+        for (const bd of breakdownDiscounts) {
+          const promoRef = bd.discount?.promotion_code;
+          if (typeof promoRef === "object" && promoRef?.code) {
+            promoCode = promoRef.code;
+            break;
+          } else if (typeof promoRef === "string") {
             const promoRes = await fetch(
-              `https://api.stripe.com/v1/promotion_codes/${promoObj}`,
+              `https://api.stripe.com/v1/promotion_codes/${promoRef}`,
               { headers: { Authorization: `Bearer ${stripeSecret}` } }
             );
             if (promoRes.ok) {
               const promoData = await promoRes.json();
               promoCode = promoData.code || "";
             }
-          } catch {
-            // non-critical, proceed without promo code
+            break;
+          }
+          // Last resort: coupon name
+          if (!promoCode && bd.discount?.coupon?.name) {
+            promoCode = bd.discount.coupon.name;
+            break;
           }
         }
       }
+    } catch (promoErr) {
+      console.error("Webhook: Failed to extract promo code:", promoErr);
     }
+
+    console.log("Webhook: Promo code:", promoCode);
 
     // Determine tier from line items
     let tier = "analysis";
@@ -198,9 +251,20 @@ export async function POST(request: Request) {
             }
           );
 
+          if (!queryRes.ok) {
+            console.error("Notion query failed:", queryRes.status, await queryRes.text().catch(() => ""));
+          }
+
           if (queryRes.ok) {
             const queryData = await queryRes.json();
             const page = queryData.results?.[0];
+
+            if (!page) {
+              console.error(
+                "Webhook: No Notion record found for",
+                JSON.stringify({ encodedAnswers, tool: "Corporate Innovation" })
+              );
+            }
 
             if (page) {
               // Update the Notion page with payment data
@@ -218,6 +282,11 @@ export async function POST(request: Request) {
                     "Company Name": {
                       rich_text: companyName
                         ? [{ type: "text", text: { content: companyName } }]
+                        : [],
+                    },
+                    "Contact Name": {
+                      rich_text: contactName
+                        ? [{ type: "text", text: { content: contactName } }]
                         : [],
                     },
                     "Amount Paid": { number: amountTotal / 100 },
@@ -239,6 +308,12 @@ export async function POST(request: Request) {
                   },
                 }),
               });
+
+              console.log(
+                "Webhook: Notion update sent for page",
+                page.id,
+                JSON.stringify({ companyName, customerEmail, promoCode, tier, amountTotal })
+              );
 
               // Extract dimension data from the Notion record for the notification email
               const props = page.properties || {};

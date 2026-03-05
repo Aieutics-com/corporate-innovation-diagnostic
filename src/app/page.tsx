@@ -161,7 +161,7 @@ export default function Home() {
                     "Your score across 5 dimensions",
                     "Radar chart visualisation",
                     "Traffic-light risk map",
-                    "One coaching teaser",
+                    "Two coaching teasers",
                   ].map((item, i) => (
                     <li
                       key={i}

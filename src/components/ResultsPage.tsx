@@ -48,13 +48,14 @@ export default function ResultsPage({
   const reflections = results.filter(shouldShowReflection);
   const [shareOpen, setShareOpen] = useState(false);
 
-  // Find the weakest dimension (lowest score, then lowest percentage) for teaser
-  const weakestReflection =
+  // Two weakest dimensions (sorted by percentage, then raw score) for free teaser
+  const teaserReflections =
     reflections.length > 0
-      ? [...reflections].sort(
-          (a, b) => a.percentage - b.percentage || a.score - b.score
-        )[0]
-      : null;
+      ? [...reflections]
+          .sort((a, b) => a.percentage - b.percentage || a.score - b.score)
+          .slice(0, 2)
+      : [];
+  const remainingCount = results.length - teaserReflections.length;
 
   return (
     <div>
@@ -116,13 +117,19 @@ export default function ResultsPage({
         </div>
       </div>
 
-      {/* Teaser reflection — FREE (weakest dimension only) */}
-      {!isPaid && weakestReflection && (
+      {/* Teaser reflections — FREE (2 weakest dimensions) */}
+      {!isPaid && teaserReflections.length > 0 && (
         <div className="mb-4">
-          <h3 className="font-[family-name:var(--font-heading)] text-lg font-bold mb-4">
+          <h3 className="font-[family-name:var(--font-heading)] text-lg font-bold mb-1">
             Areas Requiring Attention
           </h3>
-          <ReflectionBox result={weakestReflection} index={0} />
+          <p className="font-[family-name:var(--font-body)] text-sm text-[var(--color-grey)] mb-4">
+            Showing your 2 most critical dimensions out of {results.length} analysed.
+            Unlock the full report for insights on the remaining {remainingCount}.
+          </p>
+          {teaserReflections.map((result, i) => (
+            <ReflectionBox key={result.dimension.id} result={result} index={i} />
+          ))}
         </div>
       )}
 
